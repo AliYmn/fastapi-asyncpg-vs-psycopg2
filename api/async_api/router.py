@@ -1,7 +1,8 @@
+import time
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from sqlalchemy.sql import func
 
 from db import get_db
 from models import Product, User
@@ -37,6 +38,45 @@ async def create_user(username: str, email: str, full_name: str = None, db: Asyn
     await db.commit()
     await db.refresh(user)
     return {"id": user.id, "username": user.username, "email": user.email, "full_name": user.full_name}
+
+
+@router.put("/users/{user_id}")
+async def update_user(
+    user_id: int, username: str = None, email: str = None, full_name: str = None, db: AsyncSession = Depends(get_db)
+):
+    """Update a user using asyncpg."""
+    # Get user
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalars().first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Update user fields if provided
+    if username is not None:
+        user.username = username
+    if email is not None:
+        user.email = email
+    if full_name is not None:
+        user.full_name = full_name
+
+    await db.commit()
+    await db.refresh(user)
+    return {"id": user.id, "username": user.username, "email": user.email, "full_name": user.full_name}
+
+
+@router.delete("/users/{user_id}")
+async def delete_user(user_id: int, db: AsyncSession = Depends(get_db)):
+    """Delete a user using asyncpg."""
+    # Get user
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalars().first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Delete user
+    await db.delete(user)
+    await db.commit()
+    return {"message": f"User {user_id} deleted successfully"}
 
 
 @router.get("/products")
@@ -76,10 +116,62 @@ async def create_product(
     }
 
 
+@router.put("/products/{product_id}")
+async def update_product(
+    product_id: int,
+    name: str = None,
+    price: float = None,
+    sku: str = None,
+    description: str = None,
+    db: AsyncSession = Depends(get_db),
+):
+    """Update a product using asyncpg."""
+    # Get product
+    result = await db.execute(select(Product).where(Product.id == product_id))
+    product = result.scalars().first()
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+
+    # Update product fields if provided
+    if name is not None:
+        product.name = name
+    if price is not None:
+        product.price = price
+    if sku is not None:
+        product.sku = sku
+    if description is not None:
+        product.description = description
+
+    await db.commit()
+    await db.refresh(product)
+    return {
+        "id": product.id,
+        "name": product.name,
+        "price": product.price,
+        "sku": product.sku,
+        "description": product.description,
+    }
+
+
+@router.delete("/products/{product_id}")
+async def delete_product(product_id: int, db: AsyncSession = Depends(get_db)):
+    """Delete a product using asyncpg."""
+    # Get product
+    result = await db.execute(select(Product).where(Product.id == product_id))
+    product = result.scalars().first()
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+
+    # Delete product
+    await db.delete(product)
+    await db.commit()
+    return {"message": f"Product {product_id} deleted successfully"}
+
+
 @router.get("/benchmark")
 async def benchmark(count: int = 100, db: AsyncSession = Depends(get_db)):
     """Benchmark endpoint that performs multiple database operations using asyncpg."""
-    start_time = func.now()
+    start_time = time.time()
 
     # Perform multiple select operations
     for _ in range(count):
@@ -87,18 +179,103 @@ async def benchmark(count: int = 100, db: AsyncSession = Depends(get_db)):
         await db.execute(select(Product))
 
     # Get execution time
-    result = await db.execute(select(func.now() - start_time).as_scalar())
-    execution_time = result.scalar()
-    execution_seconds = float(execution_time.total_seconds())
+    execution_time = time.time() - start_time
 
     # Avoid division by zero
     operations_per_second = 0
-    if execution_seconds > 0:
-        operations_per_second = (count * 2) / execution_seconds
+    if execution_time > 0:
+        operations_per_second = (count * 2) / execution_time
 
     return {
         "database": "asyncpg",
         "operations": count * 2,  # 2 queries per iteration
-        "execution_time_seconds": execution_seconds,
+        "execution_time_seconds": execution_time,
+        "operations_per_second": operations_per_second,
+    }
+
+
+@router.get("/benchmark/mixed")
+async def benchmark_mixed(count: int = 100, db: AsyncSession = Depends(get_db)):
+    """Benchmark endpoint that performs mixed database operations (INSERT, UPDATE, DELETE, GET) using asyncpg."""
+    start_time = time.time()
+    operations = 0
+    timestamp = int(time.time() * 1000)  # Millisecond timestamp for uniqueness
+
+    # Perform mixed operations
+    for i in range(count):
+        # CREATE operation (25% of operations)
+        if i % 4 == 0:
+            user = User(
+                username=f"bench_user_{timestamp}_{i}",
+                email=f"bench_user_{timestamp}_{i}@example.com",
+                full_name=f"Benchmark User {timestamp} {i}",
+            )
+            db.add(user)
+            await db.commit()
+            await db.refresh(user)
+
+            product = Product(
+                name=f"Bench Product {timestamp} {i}",
+                price=10.99 + i,
+                sku=f"BENCH-SKU-{timestamp}-{i}",
+                description=f"Benchmark product {timestamp} {i}",
+            )
+            db.add(product)
+            await db.commit()
+            await db.refresh(product)
+            operations += 2
+
+        # READ operation (25% of operations)
+        elif i % 4 == 1:
+            await db.execute(select(User))
+            await db.execute(select(Product))
+            operations += 2
+
+        # UPDATE operation (25% of operations)
+        elif i % 4 == 2:
+            # Update first user and product if they exist
+            result_user = await db.execute(select(User).limit(1))
+            user = result_user.scalars().first()
+            if user:
+                user.full_name = f"Updated User {timestamp} {i}"
+                await db.commit()
+                operations += 1
+
+            result_product = await db.execute(select(Product).limit(1))
+            product = result_product.scalars().first()
+            if product:
+                product.price = 20.99 + i
+                await db.commit()
+                operations += 1
+
+        # DELETE operation (25% of operations)
+        else:
+            # Delete last user and product if they exist
+            result_user = await db.execute(select(User).order_by(User.id.desc()).limit(1))
+            user = result_user.scalars().first()
+            if user:
+                await db.delete(user)
+                await db.commit()
+                operations += 1
+
+            result_product = await db.execute(select(Product).order_by(Product.id.desc()).limit(1))
+            product = result_product.scalars().first()
+            if product:
+                await db.delete(product)
+                await db.commit()
+                operations += 1
+
+    # Get execution time
+    execution_time = time.time() - start_time
+
+    # Avoid division by zero
+    operations_per_second = 0
+    if execution_time > 0:
+        operations_per_second = operations / execution_time
+
+    return {
+        "database": "asyncpg",
+        "operations": operations,
+        "execution_time_seconds": execution_time,
         "operations_per_second": operations_per_second,
     }

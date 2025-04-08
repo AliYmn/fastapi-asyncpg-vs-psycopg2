@@ -21,7 +21,7 @@ services:
   app-service:
     build:
       context: .
-      dockerfile: compose/local/Dockerfile
+      dockerfile: compose/production/Dockerfile
     volumes:
       - .:/app
       - pip-cache:/root/.cache/uv
