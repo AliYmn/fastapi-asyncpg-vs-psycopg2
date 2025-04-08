@@ -4,11 +4,9 @@ from typing import AsyncGenerator
 import anyio
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import ORJSONResponse
 
 from api.async_api.router import router as async_router
 from api.sync_api.router import router as sync_router
-from exceptions import ExceptionBase
 
 
 # App Lifespan
@@ -36,14 +34,6 @@ app.add_middleware(
     allow_methods=["GET", "POST"],
     allow_credentials=False,
 )
-
-
-@app.exception_handler(ExceptionBase)
-async def http_exception_handler(_request, exc: ExceptionBase) -> ORJSONResponse:
-    return ORJSONResponse(
-        status_code=exc.status_code,
-        content=exc.to_dict(),
-    )
 
 
 @app.get("/")
