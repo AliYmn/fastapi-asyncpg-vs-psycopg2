@@ -4,7 +4,7 @@ Benchmarking FastAPI performance using asyncpg (async) vs psycopg2-binary (sync)
 
 ## Benchmark Results
 
-This project is designed to compare the performance of asyncpg (asynchronous) and psycopg2 (synchronous) database drivers in a FastAPI application. Two different test scenarios were used:
+This project is designed to compare the performance of asyncpg (asynchronous) and psycopg2 (synchronous) database drivers in a FastAPI application. Two different test scenarios were used;
 
 1. **Standard Benchmark**: Simple queries containing only SELECT operations
 2. **Mixed Benchmark**: Mixed queries containing INSERT, UPDATE, DELETE, and SELECT operations
