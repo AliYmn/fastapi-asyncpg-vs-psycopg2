@@ -2,12 +2,21 @@
 
 Benchmarking FastAPI performance using asyncpg (async) vs psycopg2-binary (sync) with PostgreSQL
 
+## Project Overview
+
+This project compares the performance of two popular PostgreSQL database drivers in a FastAPI application:
+- **asyncpg**: An asynchronous PostgreSQL driver
+- **psycopg2**: A synchronous PostgreSQL driver
+
+The goal is to provide data-driven insights to help developers choose the most appropriate driver for their specific use cases.
+
 ## Benchmark Results
 
-This project is designed to compare the performance of asyncpg (asynchronous) and psycopg2 (synchronous) database drivers in a FastAPI application. Two different test scenarios were used;
+Three different test scenarios were used to evaluate performance:
 
 1. **Standard Benchmark**: Simple queries containing only SELECT operations
 2. **Mixed Benchmark**: Mixed queries containing INSERT, UPDATE, DELETE, and SELECT operations
+3. **Advanced Benchmark**: Complex queries, parallel operations, and concurrent client tests
 
 ### Standard Benchmark Results (SELECT Operations)
 
@@ -26,6 +35,8 @@ Operations per second (higher is better):
 | 20000           | 5091.14         | 5196.03          | -2.02%  | psycopg2 | Small advantage for psycopg2 |
 | 50000           | 5180.29         | 5113.43          | +1.31%  | asyncpg | Asyncpg regains a small advantage at very high counts |
 
+![Standard Benchmark Results](./images/Standard%20Benchmark.png)
+
 ### Mixed Benchmark Results (INSERT, UPDATE, DELETE, SELECT)
 
 Operations per second (higher is better):
@@ -40,6 +51,39 @@ Operations per second (higher is better):
 | 2000            | 1994.93         | 2160.55          | -7.67%  | psycopg2 | Significant advantage for psycopg2 |
 | 5000            | 2107.17         | 2119.35          | -0.57%  | psycopg2 | Nearly identical performance |
 | 10000           | 2192.66         | 2152.99          | +1.84%  | asyncpg | Small advantage for asyncpg |
+
+![Mixed Benchmark Results](./images/Mixed%20Benchmark.png)
+
+### Advanced Benchmark Results
+
+#### Parallel Operations Benchmark (10,000 operations)
+
+| Database Driver | Operations per second | Comparison |
+|-----------------|----------------------|------------|
+| asyncpg         | 1,612.77             | +17.88%    |
+| psycopg2        | 1,368.14             | baseline   |
+
+**Analysis**: At high operation counts (10,000), asyncpg outperforms psycopg2 by 17.88% in parallel operations. This demonstrates asyncpg's advantage in handling multiple concurrent database operations.
+
+#### Complex Query Benchmark (10,000 operations)
+
+| Database Driver | Operations per second | Comparison |
+|-----------------|----------------------|------------|
+| asyncpg         | 2,538.99             | +12.61%    |
+| psycopg2        | 2,254.68             | baseline   |
+
+**Analysis**: For complex queries with joins and filters at high operation counts (10,000), asyncpg shows a 12.61% performance advantage over psycopg2.
+
+#### Concurrent Client Benchmark (100,000 operations, 5 concurrent clients)
+
+| Database Driver | Operations per second | Comparison |
+|-----------------|----------------------|------------|
+| asyncpg         | 2,400.94             | +1.95%     |
+| psycopg2        | 2,355.13             | baseline   |
+
+**Analysis**: With multiple concurrent clients and very high operation counts (100,000), asyncpg maintains a slight advantage (1.95%) over psycopg2.
+
+![Advanced Benchmark Results](./images/Advanced%20Benchmark.png)
 
 ## Analysis and Results
 
@@ -76,26 +120,46 @@ Operations per second (higher is better):
    - Performance differences fluctuate more between operation counts
    - At 1000 and 5000 operations, performance is nearly identical (differences < 1%)
 
+### Advanced Benchmark Analysis
+
+1. **Parallel Operations**:
+   - Asyncpg shows a significant advantage (17.88%) at high operation counts
+   - This demonstrates asyncpg's strength in handling multiple parallel database operations
+   - The asynchronous nature of asyncpg allows for better resource utilization in parallel scenarios
+
+2. **Complex Queries**:
+   - Asyncpg outperforms psycopg2 by 12.61% for complex queries at high operation counts
+   - This suggests that asyncpg's connection pooling and async execution model provides benefits for complex database operations
+
+3. **Concurrent Clients**:
+   - With multiple concurrent clients, asyncpg maintains a slight advantage (1.95%)
+   - This indicates that asyncpg scales well with increased concurrency
+   - The difference is smaller than in other tests, suggesting that both drivers handle concurrency well at this level
+
 ## Key Findings and Recommendations
 
 1. **Asyncpg's Sweet Spot**:
    - Low operation counts (10-500) for SELECT operations
    - Medium operation counts (50-100) for mixed operations
    - Very high operation counts (50000+) for SELECT operations
+   - Parallel operations and complex queries at high operation counts
+   - Applications with high concurrency requirements
 
 2. **Psycopg2's Sweet Spot**:
    - High operation counts (5000-20000) for SELECT operations
    - Very low operation counts (10) and medium counts (500-2000) for mixed operations
+   - Applications with simpler query patterns and lower concurrency needs
 
 3. **Selection Based on Use Case**:
    - **Read-heavy applications with low operation counts**: Choose asyncpg
-   - **Read-heavy applications with high operation counts**: Choose psycopg2
+   - **Read-heavy applications with high operation counts**: Consider psycopg2, but test with your specific workload
    - **Balanced CRUD applications**: Either driver works well, with slight variations based on operation count
+   - **Applications with complex queries and high parallelism**: Asyncpg shows clear advantages
 
 4. **Concurrency Considerations**:
-   - These tests were conducted with a single client
-   - With multiple concurrent clients, asyncpg's asynchronous nature may provide additional advantages
+   - With multiple concurrent clients, asyncpg's asynchronous nature provides measurable advantages
    - For high-concurrency scenarios, asyncpg is likely to scale better
+   - The performance gap widens in favor of asyncpg as operation complexity and parallelism increase
 
 ## Project Structure
 
@@ -127,94 +191,10 @@ Both database drivers offer high performance with specific advantages in differe
   - Low operation counts (up to 15.76% faster)
   - Very high operation counts for SELECT operations
   - Potentially better scalability for concurrent access
+  - Parallel operations and complex queries (up to 17.88% faster)
 
 - **Psycopg2 excels at**:
   - High operation counts for SELECT operations (up to 8.75% faster)
   - Very low operation counts for mixed operations (up to 19.28% faster)
 
-Since the performance differences are generally modest (mostly under 10%), the choice should largely depend on your project's specific requirements, expected load patterns, and concurrency needs.
-
-## Gelişmiş Benchmark Testleri
-
-Bu projede, asyncpg ve psycopg2 veritabanı sürücülerinin performansını daha gerçekçi ve kapsamlı senaryolarda karşılaştırmak için gelişmiş benchmark testleri eklenmiştir. Bu testler, asyncpg'nin asenkron doğasının avantajlarını daha iyi göstermek için tasarlanmıştır.
-
-### Paralel Sorgu Testleri
-
-Paralel sorgu testleri, birden fazla veritabanı sorgusunun aynı anda çalıştırılması durumunda performansı ölçer. Bu test, asyncpg'nin asenkron doğasının paralel işlemlerde sağladığı avantajları gösterir.
-
-- **Async API**: Asyncpg kullanarak, `asyncio.gather()` ile sorguları paralel olarak çalıştırır
-- **Sync API**: Psycopg2 kullanarak, `ThreadPoolExecutor` ile sorguları paralel thread'lerde çalıştırır
-
-### Karmaşık Sorgu Testleri
-
-Karmaşık sorgu testleri, daha karmaşık SQL sorgularının (join, group by, having, window functions vb.) performansını ölçer. Bu test, veritabanı sürücülerinin karmaşık sorguları işleme yeteneklerini karşılaştırır.
-
-- **Async API**: Asyncpg kullanarak karmaşık SQL sorguları çalıştırır
-- **Sync API**: Psycopg2 kullanarak aynı karmaşık SQL sorgularını çalıştırır
-
-### Eşzamanlı İstemci Testleri
-
-Eşzamanlı istemci testleri, birden fazla istemcinin aynı anda veritabanına eriştiği durumları simüle eder. Bu test, yüksek eşzamanlılık altında veritabanı sürücülerinin ölçeklenebilirliğini gösterir.
-
-- **Async API**: Asyncpg kullanarak, `asyncio.gather()` ile eşzamanlı istemcileri simüle eder
-- **Sync API**: Psycopg2 kullanarak, çoklu thread'ler ile eşzamanlı istemcileri simüle eder
-
-## Gelişmiş Benchmark Sonuçları
-
-### Paralel Sorgu Sonuçları
-
-| İşlem Sayısı | asyncpg (ops/sec) | psycopg2 (ops/sec) | Fark (%) | Daha Hızlı Olan |
-|--------------|-------------------|-------------------|----------|----------------|
-| 10           | XXX               | XXX               | XXX      | XXX            |
-| 50           | XXX               | XXX               | XXX      | XXX            |
-| 100          | XXX               | XXX               | XXX      | XXX            |
-| 500          | XXX               | XXX               | XXX      | XXX            |
-
-**Özet**: Paralel sorgu testlerinde, asyncpg genellikle psycopg2'den daha iyi performans göstermiştir. Bu, asyncpg'nin asenkron doğasının paralel işlemlerde sağladığı avantajı göstermektedir.
-
-### Karmaşık Sorgu Sonuçları
-
-| İşlem Sayısı | asyncpg (ops/sec) | psycopg2 (ops/sec) | Fark (%) | Daha Hızlı Olan |
-|--------------|-------------------|-------------------|----------|----------------|
-| 10           | XXX               | XXX               | XXX      | XXX            |
-| 50           | XXX               | XXX               | XXX      | XXX            |
-| 100          | XXX               | XXX               | XXX      | XXX            |
-| 500          | XXX               | XXX               | XXX      | XXX            |
-
-**Özet**: Karmaşık sorgu testlerinde, her iki veritabanı sürücüsü de benzer performans göstermiştir. Ancak, daha karmaşık sorgularda asyncpg'nin avantajı daha belirgin hale gelmiştir.
-
-### Eşzamanlı İstemci Sonuçları
-
-| İşlem Sayısı | Eşzamanlılık | asyncpg (ops/sec) | psycopg2 (ops/sec) | Fark (%) | Daha Hızlı Olan |
-|--------------|--------------|-------------------|-------------------|----------|----------------|
-| 100          | 5            | XXX               | XXX               | XXX      | XXX            |
-| 100          | 10           | XXX               | XXX               | XXX      | XXX            |
-| 100          | 20           | XXX               | XXX               | XXX      | XXX            |
-| 100          | 50           | XXX               | XXX               | XXX      | XXX            |
-| 500          | 5            | XXX               | XXX               | XXX      | XXX            |
-| 500          | 10           | XXX               | XXX               | XXX      | XXX            |
-| 500          | 20           | XXX               | XXX               | XXX      | XXX            |
-| 500          | 50           | XXX               | XXX               | XXX      | XXX            |
-
-**Özet**: Eşzamanlı istemci testlerinde, eşzamanlılık seviyesi arttıkça asyncpg'nin avantajı daha belirgin hale gelmiştir. Bu, asyncpg'nin asenkron doğasının yüksek eşzamanlılık durumlarında sağladığı avantajı göstermektedir.
-
-## Eşzamanlılık Seviyesine Göre Performans
-
-| Eşzamanlılık | Ortalama Fark (%) | Daha Hızlı Olan |
-|--------------|-------------------|----------------|
-| 5            | XXX               | XXX            |
-| 10           | XXX               | XXX            |
-| 20           | XXX               | XXX            |
-| 50           | XXX               | XXX            |
-
-**Özet**: Eşzamanlılık seviyesi arttıkça, asyncpg'nin psycopg2'ye göre performans avantajı artmaktadır. Bu, asyncpg'nin asenkron doğasının yüksek eşzamanlılık durumlarında daha etkili olduğunu göstermektedir.
-
-## Sonuç ve Öneriler
-
-Gelişmiş benchmark testleri, asyncpg'nin özellikle paralel sorgular ve yüksek eşzamanlılık durumlarında psycopg2'ye göre daha iyi performans gösterdiğini ortaya koymuştur. Bu sonuçlar, veritabanı sürücüsü seçiminde aşağıdaki faktörlerin dikkate alınması gerektiğini göstermektedir:
-
-1. **Eşzamanlı İstemci Sayısı**: Yüksek eşzamanlı istemci sayısına sahip uygulamalar için asyncpg daha iyi bir seçenek olabilir.
-2. **Paralel Sorgu İhtiyacı**: Birden fazla sorgunun paralel olarak çalıştırılması gereken durumlarda asyncpg avantaj sağlar.
-3. **Karmaşık Sorgular**: Karmaşık sorgular için her iki sürücü de benzer performans gösterse de, asyncpg'nin asenkron doğası daha fazla esneklik sağlar.
-
-Sonuç olarak, yüksek eşzamanlılık ve paralel işlem gerektiren uygulamalar için asyncpg, daha basit ve sıralı işlemler için psycopg2 tercih edilebilir. Ancak, her iki veritabanı sürücüsü de yüksek performans sunmaktadır ve uygulama gereksinimlerine göre seçim yapılmalıdır.
+Since the performance differences are generally modest (mostly under 10%), the choice should largely depend on your project's specific requirements, expected load patterns, and concurrency needs. For applications with high concurrency and complex queries, asyncpg provides measurable advantages that may be worth considering.

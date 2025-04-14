@@ -264,8 +264,8 @@ async def run_advanced_benchmarks():
     print("Running advanced benchmarks...")
 
     # Test configurations
-    test_counts = [10, 50, 100, 500]
-    concurrency_levels = [5, 10, 20, 50]
+    test_counts = [10000]  # Increased to 10k
+    concurrency_levels = [5]
 
     # Results storage
     results = {
@@ -282,7 +282,8 @@ async def run_advanced_benchmarks():
 
             try:
                 # Async API
-                async_response = requests.get(f"http://localhost:8000/async/benchmark/parallel?count={count}")
+                url = f"http://localhost:8000/async/benchmark/parallel?count={count}"
+                async_response = requests.get(url)
                 if async_response.status_code == 200:
                     async_result = async_response.json()
                     results["parallel"]["async"][count] = async_result
@@ -291,7 +292,8 @@ async def run_advanced_benchmarks():
                     results["parallel"]["async"][count] = {"error": f"HTTP {async_response.status_code}"}
 
                 # Sync API
-                sync_response = requests.get(f"http://localhost:8000/sync/benchmark/parallel?count={count}")
+                url = f"http://localhost:8000/sync/benchmark/parallel?count={count}"
+                sync_response = requests.get(url)
                 if sync_response.status_code == 200:
                     sync_result = sync_response.json()
                     results["parallel"]["sync"][count] = sync_result
@@ -322,7 +324,8 @@ async def run_advanced_benchmarks():
 
             try:
                 # Async API
-                async_response = requests.get(f"http://localhost:8000/async/benchmark/complex?count={count}")
+                url = f"http://localhost:8000/async/benchmark/complex?count={count}"
+                async_response = requests.get(url)
                 if async_response.status_code == 200:
                     async_result = async_response.json()
                     results["complex"]["async"][count] = async_result
@@ -331,7 +334,8 @@ async def run_advanced_benchmarks():
                     results["complex"]["async"][count] = {"error": f"HTTP {async_response.status_code}"}
 
                 # Sync API
-                sync_response = requests.get(f"http://localhost:8000/sync/benchmark/complex?count={count}")
+                url = f"http://localhost:8000/sync/benchmark/complex?count={count}"
+                sync_response = requests.get(url)
                 if sync_response.status_code == 200:
                     sync_result = sync_response.json()
                     results["complex"]["sync"][count] = sync_result
@@ -357,7 +361,7 @@ async def run_advanced_benchmarks():
 
         # Run concurrent benchmarks
         print("\nRunning concurrent benchmarks...")
-        for count in [100, 500]:  # Fewer counts for concurrent tests as they're more intensive
+        for count in [100000]:  # Increased to 100k
             for concurrency in concurrency_levels:
                 print(f"  Testing with {count} operations and {concurrency} concurrent clients...")
 
@@ -743,17 +747,18 @@ async def main():
     )
     print(f"Running mixed benchmark tests with counts {mixed_counts} and {mixed_iterations} iterations each...")
 
-    print("Creating test data...")
-    for i in range(20):
-        requests.post(
-            f"{base_url}/async/products",
-            params={
-                "name": f"Product {i}",
-                "price": 10.99 + i,
-                "sku": f"SKU{i}",
-                "description": f"Test product {i}",
-            },
-        )
+    # Test verisi oluşturmayı atlayalım
+    # print("Creating test data...")
+    # for i in range(20):
+    #     requests.post(
+    #         f"{base_url}/async/products",
+    #         params={
+    #             "name": f"Product {i}",
+    #             "price": 10.99 + i,
+    #             "sku": f"SKU{i}",
+    #             "description": f"Test product {i}"
+    #         },
+    #     )
 
     # Run standard tests (SELECT operations only)
     print("\nRunning standard async tests...")
@@ -845,5 +850,60 @@ async def main():
         print("\nAdvanced benchmarks were not completed due to errors.")
 
 
+async def test_advanced_benchmarks_only():
+    """Function to test only advanced benchmarks."""
+    print("Testing only advanced benchmarks...")
+
+    try:
+        # Run advanced benchmarks
+        advanced_results = await run_advanced_benchmarks()
+
+        # Print results
+        print("\nAdvanced benchmark results:")
+
+        # Complex benchmarks
+        if "complex" in advanced_results and advanced_results["complex"]["async"]:
+            print("\nComplex Query Benchmark:")
+            for count, result in advanced_results["complex"]["async"].items():
+                if isinstance(count, int) and "error" not in result:
+                    async_ops = result.get("operations_per_second", 0)
+                    sync_ops = advanced_results["complex"]["sync"][count].get("operations_per_second", 0)
+
+                    if sync_ops > 0:
+                        percentage_diff = ((async_ops - sync_ops) / sync_ops) * 100
+                        print(f"  Count {count}: asyncpg: {async_ops:.2f} ops/sec, psycopg2: {sync_ops:.2f} ops/sec")
+                        print(
+                            f"  Difference: {percentage_diff:.2f}% ({'asyncpg faster' if percentage_diff > 0 else 'psycopg2 faster'})"
+                        )
+
+        # Concurrent benchmarks
+        if "concurrent" in advanced_results and advanced_results["concurrent"]["async"]:
+            print("\nConcurrent Client Benchmark:")
+            for count in advanced_results["concurrent"]["async"]:
+                if isinstance(count, int):
+                    for concurrency, result in advanced_results["concurrent"]["async"][count].items():
+                        if "error" not in result:
+                            async_ops = result.get("operations_per_second", 0)
+                            sync_ops = advanced_results["concurrent"]["sync"][count][concurrency].get(
+                                "operations_per_second", 0
+                            )
+
+                            if sync_ops > 0:
+                                percentage_diff = ((async_ops - sync_ops) / sync_ops) * 100
+                                print(
+                                    f"  Count {count}, Concurrency {concurrency}: asyncpg: {async_ops:.2f} ops/sec, psycopg2: {sync_ops:.2f} ops/sec"
+                                )
+                                print(
+                                    f"  Difference: {percentage_diff:.2f}% ({'asyncpg faster' if percentage_diff > 0 else 'psycopg2 faster'})"
+                                )
+
+    except Exception as e:
+        print(f"Error running advanced benchmarks: {str(e)}")
+
+
 if __name__ == "__main__":
-    asyncio.run(main())
+    # Sadece gelişmiş benchmarkları test etmek için:
+    asyncio.run(test_advanced_benchmarks_only())
+
+    # Tüm benchmarkları çalıştırmak için:
+    # asyncio.run(main())

@@ -198,6 +198,7 @@ async def benchmark(count: int = 100, db: AsyncSession = Depends(get_db)):
 @router.get("/benchmark/mixed")
 async def benchmark_mixed(count: int = 100, db: AsyncSession = Depends(get_db)):
     """Benchmark endpoint that performs mixed database operations (INSERT, UPDATE, DELETE, GET) using asyncpg."""
+
     start_time = time.time()
     operations = 0
     timestamp = int(time.time() * 1000)  # Millisecond timestamp for uniqueness
@@ -287,23 +288,29 @@ async def benchmark_parallel(count: int = 100, db: AsyncSession = Depends(get_db
     """Benchmark endpoint that performs multiple database operations in parallel using asyncpg."""
     import asyncio
 
+    from db import get_db_session
+
     start_time = time.time()
     operations = 0
 
     # Define async query functions
     async def query_users():
-        return await db.execute(select(User))
+        async with get_db_session() as task_db:
+            return await task_db.execute(select(User))
 
     async def query_products():
-        return await db.execute(select(Product).where(Product.price > 10.0).order_by(Product.price.desc()))
+        async with get_db_session() as task_db:
+            return await task_db.execute(select(Product).where(Product.price > 10.0).order_by(Product.price.desc()))
 
     async def query_users_with_filter():
-        return await db.execute(select(User).where(User.username.like("user%")))
+        async with get_db_session() as task_db:
+            return await task_db.execute(select(User).where(User.username.like("user%")))
 
     async def query_products_with_join():
         # Simulate a more complex query with a join
-        stmt = select(Product, User).join(User, Product.id == User.id, isouter=True).where(Product.price > 5.0)
-        return await db.execute(stmt)
+        async with get_db_session() as task_db:
+            stmt = select(Product, User).join(User, Product.id == User.id, isouter=True).where(Product.price > 5.0)
+            return await task_db.execute(stmt)
 
     # Run queries in parallel batches
     for _ in range(count):
@@ -387,26 +394,30 @@ async def benchmark_complex(count: int = 100, db: AsyncSession = Depends(get_db)
 
 
 @router.get("/benchmark/concurrent")
-async def benchmark_concurrent(count: int = 100, concurrency: int = 10, db: AsyncSession = Depends(get_db)):
+async def benchmark_concurrent(count: int = 100, concurrency: int = 5, db: AsyncSession = Depends(get_db)):
     """Benchmark endpoint that simulates concurrent database operations using asyncpg."""
     import asyncio
+
+    from db import async_session
 
     start_time = time.time()
 
     # Define a single task that performs database operations
     async def db_task(task_id: int):
         task_operations = 0
-        # Perform a mix of operations
-        for i in range(count // concurrency):
-            # SELECT operation
-            await db.execute(select(User).where(User.id > task_id % 5))
-            await db.execute(select(Product).where(Product.price > 10 + task_id % 10))
-            task_operations += 2
+        # Her görev için yeni bir oturum oluştur
+        async with async_session() as task_db:
+            # Perform a mix of operations
+            for i in range(count // concurrency):
+                # SELECT operation
+                await task_db.execute(select(User).where(User.id > task_id % 5))
+                await task_db.execute(select(Product).where(Product.price > 10 + task_id % 10))
+                task_operations += 2
 
-            # More complex SELECT
-            stmt = select(User, Product).outerjoin(Product, User.id == Product.id)
-            await db.execute(stmt)
-            task_operations += 1
+                # More complex SELECT
+                stmt = select(User, Product).outerjoin(Product, User.id == Product.id)
+                await task_db.execute(stmt)
+                task_operations += 1
 
         return task_operations
 

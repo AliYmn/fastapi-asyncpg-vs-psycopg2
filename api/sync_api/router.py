@@ -270,22 +270,33 @@ def benchmark_mixed(count: int = 100, db: Session = Depends(get_db_sync)):
 @router.get("/benchmark/parallel")
 def benchmark_parallel(count: int = 100, db: Session = Depends(get_db_sync)):
     """Benchmark endpoint that performs multiple database operations in parallel using psycopg2."""
+    from db import get_db_session_sync
+
     start_time = time.time()
     operations = 0
 
     # Define query functions
     def query_users():
-        return db.query(User).all()
+        with get_db_session_sync() as thread_db:
+            return thread_db.query(User).all()
 
     def query_products():
-        return db.query(Product).filter(Product.price > 10.0).order_by(Product.price.desc()).all()
+        with get_db_session_sync() as thread_db:
+            return thread_db.query(Product).filter(Product.price > 10.0).order_by(Product.price.desc()).all()
 
     def query_users_with_filter():
-        return db.query(User).filter(User.username.like("user%")).all()
+        with get_db_session_sync() as thread_db:
+            return thread_db.query(User).filter(User.username.like("user%")).all()
 
     def query_products_with_join():
         # Simulate a more complex query with a join
-        return db.query(Product, User).join(User, Product.id == User.id, isouter=True).filter(Product.price > 5.0).all()
+        with get_db_session_sync() as thread_db:
+            return (
+                thread_db.query(Product, User)
+                .join(User, Product.id == User.id, isouter=True)
+                .filter(Product.price > 5.0)
+                .all()
+            )
 
     # Run queries in parallel batches using ThreadPoolExecutor
     for _ in range(count):

@@ -1,6 +1,7 @@
 from db.async_db import (
     SQLALCHEMY_DATABASE_URL,
     Base,
+    async_session,
     get_db,
     get_db_session,
 )
@@ -13,4 +14,5 @@ __all__ = [
     "SQLALCHEMY_DATABASE_URL",
     "get_db_session_sync",
     "get_db_sync",
+    "async_session",
 ]
