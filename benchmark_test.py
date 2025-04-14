@@ -2,6 +2,7 @@ import asyncio
 import json
 import time
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime
 from statistics import mean, median, stdev
 
 import aiohttp
@@ -192,6 +193,11 @@ def generate_report(async_analysis, sync_analysis, test_type="standard"):
     report = {"test_type": test_type, "async_results": async_analysis, "sync_results": sync_analysis, "comparison": []}
 
     # Match async and sync results by count for comparison
+    async_wins = 0
+    sync_wins = 0
+    total_diff_percent = 0
+    comparison_count = 0
+
     for async_result in async_analysis:
         count = async_result["count"]
         sync_result = next((r for r in sync_analysis if r["count"] == count), None)
@@ -206,6 +212,15 @@ def generate_report(async_analysis, sync_analysis, test_type="standard"):
             else:
                 performance_diff_percent = float("inf") if async_mean_ops > 0 else 0
 
+            # Track wins and total difference for summary
+            if async_mean_ops > sync_mean_ops:
+                async_wins += 1
+            else:
+                sync_wins += 1
+
+            total_diff_percent += performance_diff_percent
+            comparison_count += 1
+
             report["comparison"].append(
                 {
                     "count": count,
@@ -217,6 +232,14 @@ def generate_report(async_analysis, sync_analysis, test_type="standard"):
                 }
             )
 
+    # Add summary section
+    report["summary"] = {
+        "overall_faster": "async" if async_wins > sync_wins else "sync",
+        "async_wins": async_wins,
+        "sync_wins": sync_wins,
+        "avg_percentage_diff": total_diff_percent / comparison_count if comparison_count > 0 else 0,
+    }
+
     return report
 
 
@@ -225,7 +248,7 @@ def print_comparison_table(report):
     print(f"\n=== {report['test_type'].upper()} BENCHMARK RESULTS SUMMARY ===\n")
     print("Operations per second (higher is better):\n")
 
-    print(f"{'Count':<10} {'Asyncpg':<15} {'Psycopg2':<15} {'Diff %':<10} {'Faster'}")
+    print(f"{'Count':<10} {'Async':<15} {'Sync':<15} {'Diff %':<10} {'Faster'}")
     print("-" * 60)
 
     for comp in sorted(report["comparison"], key=lambda x: x["count"]):
@@ -236,17 +259,482 @@ def print_comparison_table(report):
         )
 
 
-async def main():
-    """Run benchmark tests and generate report."""
-    base_url = "http://localhost:8000"
+async def run_advanced_benchmarks():
+    """Run advanced benchmarks for both async and sync APIs."""
+    print("Running advanced benchmarks...")
 
-    # Define test parameters
-    # Standard select-only tests
+    # Test configurations
+    test_counts = [10, 50, 100, 500]
+    concurrency_levels = [5, 10, 20, 50]
+
+    # Results storage
+    results = {
+        "parallel": {"async": {}, "sync": {}},
+        "complex": {"async": {}, "sync": {}},
+        "concurrent": {"async": {}, "sync": {}},
+    }
+
+    try:
+        # Run parallel benchmarks
+        print("\nRunning parallel benchmarks...")
+        for count in test_counts:
+            print(f"  Testing with {count} operations...")
+
+            try:
+                # Async API
+                async_response = requests.get(f"http://localhost:8000/async/benchmark/parallel?count={count}")
+                if async_response.status_code == 200:
+                    async_result = async_response.json()
+                    results["parallel"]["async"][count] = async_result
+                else:
+                    print(f"    Error with async parallel benchmark: {async_response.status_code}")
+                    results["parallel"]["async"][count] = {"error": f"HTTP {async_response.status_code}"}
+
+                # Sync API
+                sync_response = requests.get(f"http://localhost:8000/sync/benchmark/parallel?count={count}")
+                if sync_response.status_code == 200:
+                    sync_result = sync_response.json()
+                    results["parallel"]["sync"][count] = sync_result
+                else:
+                    print(f"    Error with sync parallel benchmark: {sync_response.status_code}")
+                    results["parallel"]["sync"][count] = {"error": f"HTTP {sync_response.status_code}"}
+
+                # Calculate percentage difference if both results are available
+                if async_response.status_code == 200 and sync_response.status_code == 200:
+                    async_ops = async_result["operations_per_second"]
+                    sync_ops = sync_result["operations_per_second"]
+
+                    if sync_ops > 0:
+                        percentage_diff = ((async_ops - sync_ops) / sync_ops) * 100
+                        print(f"    asyncpg: {async_ops:.2f} ops/sec, psycopg2: {sync_ops:.2f} ops/sec")
+                        print(
+                            f"    Difference: {percentage_diff:.2f}% ({'asyncpg faster' if percentage_diff > 0 else 'psycopg2 faster'})"
+                        )
+            except Exception as e:
+                print(f"    Error running parallel benchmark with count {count}: {str(e)}")
+                results["parallel"]["async"][count] = {"error": str(e)}
+                results["parallel"]["sync"][count] = {"error": str(e)}
+
+        # Run complex benchmarks
+        print("\nRunning complex query benchmarks...")
+        for count in test_counts:
+            print(f"  Testing with {count} operations...")
+
+            try:
+                # Async API
+                async_response = requests.get(f"http://localhost:8000/async/benchmark/complex?count={count}")
+                if async_response.status_code == 200:
+                    async_result = async_response.json()
+                    results["complex"]["async"][count] = async_result
+                else:
+                    print(f"    Error with async complex benchmark: {async_response.status_code}")
+                    results["complex"]["async"][count] = {"error": f"HTTP {async_response.status_code}"}
+
+                # Sync API
+                sync_response = requests.get(f"http://localhost:8000/sync/benchmark/complex?count={count}")
+                if sync_response.status_code == 200:
+                    sync_result = sync_response.json()
+                    results["complex"]["sync"][count] = sync_result
+                else:
+                    print(f"    Error with sync complex benchmark: {sync_response.status_code}")
+                    results["complex"]["sync"][count] = {"error": f"HTTP {sync_response.status_code}"}
+
+                # Calculate percentage difference if both results are available
+                if async_response.status_code == 200 and sync_response.status_code == 200:
+                    async_ops = async_result["operations_per_second"]
+                    sync_ops = sync_result["operations_per_second"]
+
+                    if sync_ops > 0:
+                        percentage_diff = ((async_ops - sync_ops) / sync_ops) * 100
+                        print(f"    asyncpg: {async_ops:.2f} ops/sec, psycopg2: {sync_ops:.2f} ops/sec")
+                        print(
+                            f"    Difference: {percentage_diff:.2f}% ({'asyncpg faster' if percentage_diff > 0 else 'psycopg2 faster'})"
+                        )
+            except Exception as e:
+                print(f"    Error running complex benchmark with count {count}: {str(e)}")
+                results["complex"]["async"][count] = {"error": str(e)}
+                results["complex"]["sync"][count] = {"error": str(e)}
+
+        # Run concurrent benchmarks
+        print("\nRunning concurrent benchmarks...")
+        for count in [100, 500]:  # Fewer counts for concurrent tests as they're more intensive
+            for concurrency in concurrency_levels:
+                print(f"  Testing with {count} operations and {concurrency} concurrent clients...")
+
+                try:
+                    # Async API
+                    url = f"http://localhost:8000/async/benchmark/concurrent?count={count}&concurrency={concurrency}"
+                    async_response = requests.get(url)
+                    if async_response.status_code == 200:
+                        async_result = async_response.json()
+                        if count not in results["concurrent"]["async"]:
+                            results["concurrent"]["async"][count] = {}
+                        results["concurrent"]["async"][count][concurrency] = async_result
+                    else:
+                        print(f"    Error with async concurrent benchmark: {async_response.status_code}")
+                        if count not in results["concurrent"]["async"]:
+                            results["concurrent"]["async"][count] = {}
+                        results["concurrent"]["async"][count][concurrency] = {
+                            "error": f"HTTP {async_response.status_code}"
+                        }
+
+                    # Sync API
+                    url = f"http://localhost:8000/sync/benchmark/concurrent?count={count}&concurrency={concurrency}"
+                    sync_response = requests.get(url)
+                    if sync_response.status_code == 200:
+                        sync_result = sync_response.json()
+                        if count not in results["concurrent"]["sync"]:
+                            results["concurrent"]["sync"][count] = {}
+                        results["concurrent"]["sync"][count][concurrency] = sync_result
+                    else:
+                        print(f"    Error with sync concurrent benchmark: {sync_response.status_code}")
+                        if count not in results["concurrent"]["sync"]:
+                            results["concurrent"]["sync"][count] = {}
+                        results["concurrent"]["sync"][count][concurrency] = {
+                            "error": f"HTTP {sync_response.status_code}"
+                        }
+
+                    # Calculate percentage difference if both results are available
+                    if async_response.status_code == 200 and sync_response.status_code == 200:
+                        async_ops = async_result["operations_per_second"]
+                        sync_ops = sync_result["operations_per_second"]
+
+                        if sync_ops > 0:
+                            percentage_diff = ((async_ops - sync_ops) / sync_ops) * 100
+                            print(f"    asyncpg: {async_ops:.2f} ops/sec, psycopg2: {sync_ops:.2f} ops/sec")
+                            print(
+                                f"    Difference: {percentage_diff:.2f}% ({'asyncpg faster' if percentage_diff > 0 else 'psycopg2 faster'})"
+                            )
+                except Exception as e:
+                    err_msg = f"    Error running concurrent benchmark with count {count} and concurrency {concurrency}: {str(e)}"
+                    print(err_msg)
+                    if count not in results["concurrent"]["async"]:
+                        results["concurrent"]["async"][count] = {}
+                    if count not in results["concurrent"]["sync"]:
+                        results["concurrent"]["sync"][count] = {}
+                    results["concurrent"]["async"][count][concurrency] = {"error": str(e)}
+                    results["concurrent"]["sync"][count][concurrency] = {"error": str(e)}
+    except Exception as e:
+        print(f"Error running advanced benchmarks: {str(e)}")
+
+    return results
+
+
+def analyze_advanced_results(results):
+    """Analyze the advanced benchmark results."""
+    analysis = {
+        "parallel": {"overall_faster": None, "avg_percentage_diff": 0, "count_analysis": {}},
+        "complex": {"overall_faster": None, "avg_percentage_diff": 0, "count_analysis": {}},
+        "concurrent": {
+            "overall_faster": None,
+            "avg_percentage_diff": 0,
+            "count_analysis": {},
+            "concurrency_analysis": {},
+        },
+    }
+
+    # Analyze parallel benchmark results
+    async_wins = 0
+    sync_wins = 0
+    total_diff_percent = 0
+    comparison_count = 0
+
+    for count in results["parallel"]["async"]:
+        if isinstance(count, int):
+            async_result = results["parallel"]["async"][count]
+            sync_result = results["parallel"]["sync"][count]
+
+            # Skip error results
+            if "error" in async_result or "error" in sync_result:
+                continue
+
+            async_ops = async_result.get("operations_per_second", 0)
+            sync_ops = sync_result.get("operations_per_second", 0)
+
+            # Avoid division by zero
+            if sync_ops > 0:
+                percentage_diff = ((async_ops - sync_ops) / sync_ops) * 100
+            else:
+                percentage_diff = 100 if async_ops > 0 else 0
+
+            analysis["parallel"][count] = {
+                "async": async_ops,
+                "sync": sync_ops,
+                "percentage_diff": percentage_diff,
+                "faster": "asyncpg" if async_ops > sync_ops else "psycopg2",
+            }
+
+            if async_ops > sync_ops:
+                async_wins += 1
+            else:
+                sync_wins += 1
+
+            total_diff_percent += percentage_diff
+            comparison_count += 1
+
+    # Set overall results for parallel benchmarks
+    if comparison_count > 0:
+        analysis["parallel"]["overall_faster"] = "asyncpg" if async_wins > sync_wins else "psycopg2"
+        analysis["parallel"]["avg_percentage_diff"] = total_diff_percent / comparison_count
+    else:
+        analysis["parallel"]["overall_faster"] = "unknown"
+        analysis["parallel"]["avg_percentage_diff"] = 0
+
+    # Analyze complex benchmark results
+    async_wins = 0
+    sync_wins = 0
+    total_diff_percent = 0
+    comparison_count = 0
+
+    for count in results["complex"]["async"]:
+        if isinstance(count, int):
+            async_result = results["complex"]["async"][count]
+            sync_result = results["complex"]["sync"][count]
+
+            # Skip error results
+            if "error" in async_result or "error" in sync_result:
+                continue
+
+            async_ops = async_result.get("operations_per_second", 0)
+            sync_ops = sync_result.get("operations_per_second", 0)
+
+            # Avoid division by zero
+            if sync_ops > 0:
+                percentage_diff = ((async_ops - sync_ops) / sync_ops) * 100
+            else:
+                percentage_diff = 100 if async_ops > 0 else 0
+
+            analysis["complex"][count] = {
+                "async": async_ops,
+                "sync": sync_ops,
+                "percentage_diff": percentage_diff,
+                "faster": "asyncpg" if async_ops > sync_ops else "psycopg2",
+            }
+
+            if async_ops > sync_ops:
+                async_wins += 1
+            else:
+                sync_wins += 1
+
+            total_diff_percent += percentage_diff
+            comparison_count += 1
+
+    # Set overall results for complex benchmarks
+    if comparison_count > 0:
+        analysis["complex"]["overall_faster"] = "asyncpg" if async_wins > sync_wins else "psycopg2"
+        analysis["complex"]["avg_percentage_diff"] = total_diff_percent / comparison_count
+    else:
+        analysis["complex"]["overall_faster"] = "unknown"
+        analysis["complex"]["avg_percentage_diff"] = 0
+
+    # Analyze concurrent benchmark results
+    async_wins = 0
+    sync_wins = 0
+    total_diff_percent = 0
+    comparison_count = 0
+
+    # Also analyze by concurrency level
+    concurrency_analysis = {}
+
+    for count in results["concurrent"]["async"]:
+        if isinstance(count, int):
+            analysis["concurrent"][count] = {}
+            for concurrency, result in results["concurrent"]["async"][count].items():
+                sync_result = results["concurrent"]["sync"][count][concurrency]
+
+                # Skip error results
+                if "error" in result or "error" in sync_result:
+                    continue
+
+                async_ops = result.get("operations_per_second", 0)
+                sync_ops = sync_result.get("operations_per_second", 0)
+
+                # Avoid division by zero
+                if sync_ops > 0:
+                    percentage_diff = ((async_ops - sync_ops) / sync_ops) * 100
+                else:
+                    percentage_diff = 100 if async_ops > 0 else 0
+
+                analysis["concurrent"][count][concurrency] = {
+                    "async": async_ops,
+                    "sync": sync_ops,
+                    "percentage_diff": percentage_diff,
+                    "faster": "asyncpg" if async_ops > sync_ops else "psycopg2",
+                }
+
+                if async_ops > sync_ops:
+                    async_wins += 1
+                else:
+                    sync_wins += 1
+
+                total_diff_percent += percentage_diff
+                comparison_count += 1
+
+                # Track by concurrency level
+                if concurrency not in concurrency_analysis:
+                    concurrency_analysis[concurrency] = {
+                        "async_wins": 0,
+                        "sync_wins": 0,
+                        "total_diff_percent": 0,
+                        "comparison_count": 0,
+                    }
+
+                if async_ops > sync_ops:
+                    concurrency_analysis[concurrency]["async_wins"] += 1
+                else:
+                    concurrency_analysis[concurrency]["sync_wins"] += 1
+
+                concurrency_analysis[concurrency]["total_diff_percent"] += percentage_diff
+                concurrency_analysis[concurrency]["comparison_count"] += 1
+
+    # Set overall results for concurrent benchmarks
+    if comparison_count > 0:
+        analysis["concurrent"]["overall_faster"] = "asyncpg" if async_wins > sync_wins else "psycopg2"
+        analysis["concurrent"]["avg_percentage_diff"] = total_diff_percent / comparison_count
+    else:
+        analysis["concurrent"]["overall_faster"] = "unknown"
+        analysis["concurrent"]["avg_percentage_diff"] = 0
+
+    # Calculate results by concurrency level
+    for concurrency, data in concurrency_analysis.items():
+        if data["comparison_count"] > 0:
+            analysis["concurrent"]["concurrency_analysis"][concurrency] = {
+                "overall_faster": "asyncpg" if data["async_wins"] > data["sync_wins"] else "psycopg2",
+                "async_wins": data["async_wins"],
+                "sync_wins": data["sync_wins"],
+                "avg_percentage_diff": data["total_diff_percent"] / data["comparison_count"],
+            }
+        else:
+            analysis["concurrent"]["concurrency_analysis"][concurrency] = {
+                "overall_faster": "unknown",
+                "async_wins": 0,
+                "sync_wins": 0,
+                "avg_percentage_diff": 0,
+            }
+
+    return analysis
+
+
+def generate_advanced_report(analysis):
+    """Generate a report from the advanced benchmark analysis."""
+    report = {
+        "parallel": {
+            "title": "Parallel Query Benchmark Results",
+            "description": "This benchmark tests the performance of executing multiple queries in parallel.",
+            "results": analysis["parallel"],
+        },
+        "complex": {
+            "title": "Complex Query Benchmark Results",
+            "description": (
+                "This benchmark tests the performance of executing complex SQL queries "
+                "with joins, aggregations, and window functions."
+            ),
+            "results": analysis["complex"],
+        },
+        "concurrent": {
+            "title": "Concurrent Client Benchmark Results",
+            "description": (
+                "This benchmark tests the performance under concurrent load "
+                "with multiple clients making requests simultaneously."
+            ),
+            "results": analysis["concurrent"],
+        },
+    }
+
+    # Add summary for each benchmark type
+    for benchmark_type in ["parallel", "complex", "concurrent"]:
+        if benchmark_type != "concurrent":
+            # Count how many times each driver was faster
+            asyncpg_faster_count = sum(
+                1 for result in analysis[benchmark_type].values() if result["faster"] == "asyncpg"
+            )
+            psycopg2_faster_count = sum(
+                1 for result in analysis[benchmark_type].values() if result["faster"] == "psycopg2"
+            )
+            total_tests = len(analysis[benchmark_type])
+
+            # Calculate average percentage difference
+            avg_diff = sum(abs(result["percentage_diff"]) for result in analysis[benchmark_type].values()) / total_tests
+
+            report[benchmark_type]["summary"] = {
+                "asyncpg_faster_count": asyncpg_faster_count,
+                "psycopg2_faster_count": psycopg2_faster_count,
+                "total_tests": total_tests,
+                "avg_percentage_diff": avg_diff,
+                "overall_faster": "asyncpg" if asyncpg_faster_count > psycopg2_faster_count else "psycopg2",
+            }
+        else:
+            # For concurrent benchmarks, analyze by concurrency level
+            asyncpg_faster_count = 0
+            psycopg2_faster_count = 0
+            total_tests = 0
+
+            # Track performance by concurrency level
+            concurrency_analysis = {}
+
+            for count_results in analysis[benchmark_type].values():
+                for concurrency, result in count_results.items():
+                    if concurrency not in concurrency_analysis:
+                        concurrency_analysis[concurrency] = {
+                            "asyncpg_faster_count": 0,
+                            "psycopg2_faster_count": 0,
+                            "total_tests": 0,
+                            "avg_percentage_diff": 0,
+                        }
+
+                    if result["faster"] == "asyncpg":
+                        asyncpg_faster_count += 1
+                        concurrency_analysis[concurrency]["asyncpg_faster_count"] += 1
+                    else:
+                        psycopg2_faster_count += 1
+                        concurrency_analysis[concurrency]["psycopg2_faster_count"] += 1
+
+                    concurrency_analysis[concurrency]["total_tests"] += 1
+                    concurrency_analysis[concurrency]["avg_percentage_diff"] += abs(result["percentage_diff"])
+                    total_tests += 1
+
+            # Calculate averages for each concurrency level
+            for concurrency, analysis_data in concurrency_analysis.items():
+                if analysis_data["total_tests"] > 0:
+                    analysis_data["avg_percentage_diff"] /= analysis_data["total_tests"]
+                    analysis_data["overall_faster"] = (
+                        "asyncpg"
+                        if analysis_data["asyncpg_faster_count"] > analysis_data["psycopg2_faster_count"]
+                        else "psycopg2"
+                    )
+
+            # Calculate overall average percentage difference
+            avg_diff = (
+                sum(
+                    abs(result["percentage_diff"])
+                    for count_results in analysis[benchmark_type].values()
+                    for result in count_results.values()
+                )
+                / total_tests
+                if total_tests > 0
+                else 0
+            )
+
+            report[benchmark_type]["summary"] = {
+                "asyncpg_faster_count": asyncpg_faster_count,
+                "psycopg2_faster_count": psycopg2_faster_count,
+                "total_tests": total_tests,
+                "avg_percentage_diff": avg_diff,
+                "overall_faster": "asyncpg" if asyncpg_faster_count > psycopg2_faster_count else "psycopg2",
+                "concurrency_analysis": concurrency_analysis,
+            }
+
+    return report
+
+
+async def main():
+    """Main function to run all benchmarks."""
+    print("Starting benchmark tests...")
+
+    # Run standard benchmarks
+    base_url = "http://localhost:8000"
     standard_counts = [10, 50, 100, 500, 1000, 2000, 5000, 10000, 20000, 50000]
     standard_iterations = 3
-
-    # Mixed operation tests (INSERT, UPDATE, DELETE, GET)
-    # Using smaller counts for mixed tests as they are more resource-intensive
     mixed_counts = [10, 50, 100, 500, 1000, 2000, 5000, 10000]
     mixed_iterations = 3
 
@@ -258,12 +746,13 @@ async def main():
     print("Creating test data...")
     for i in range(20):
         requests.post(
-            f"{base_url}/async/users",
-            params={"username": f"user{i}", "email": f"user{i}@example.com", "full_name": f"Test User {i}"},
-        )
-        requests.post(
             f"{base_url}/async/products",
-            params={"name": f"Product {i}", "price": 10.99 + i, "sku": f"SKU{i}", "description": f"Test product {i}"},
+            params={
+                "name": f"Product {i}",
+                "price": 10.99 + i,
+                "sku": f"SKU{i}",
+                "description": f"Test product {i}",
+            },
         )
 
     # Run standard tests (SELECT operations only)
@@ -300,21 +789,60 @@ async def main():
     print("Generating mixed report...")
     mixed_report = generate_report(async_mixed_analysis, sync_mixed_analysis, "mixed")
 
-    # Save combined report to file
-    combined_report = {
-        "standard_tests": standard_report,
-        "mixed_tests": mixed_report,
-        "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
-    }
+    # Run advanced benchmarks
+    try:
+        advanced_results = await run_advanced_benchmarks()
+        advanced_analysis = analyze_advanced_results(advanced_results)
+        advanced_report = generate_advanced_report(advanced_analysis)
+    except Exception as e:
+        print(f"Error with advanced benchmarks: {str(e)}")
+        advanced_report = {"error": str(e)}
 
+    # Combine all reports
+    combined_report = {"standard": standard_report, "mixed": mixed_report, "timestamp": datetime.now().isoformat()}
+
+    # Add advanced report if available
+    if "error" not in advanced_report:
+        combined_report["advanced"] = advanced_report
+
+    # Save to file
     with open("benchmark_report.json", "w") as f:
         json.dump(combined_report, f, indent=2)
 
-    # Print summary tables
-    print_comparison_table(standard_report)
-    print_comparison_table(mixed_report)
+    print("\nBenchmark tests completed. Results saved to benchmark_report.json")
 
-    print("\nBenchmark complete! Full results saved to benchmark_report.json")
+    # Print overall summary
+    print("\n=== OVERALL SUMMARY ===")
+    print("\nStandard Benchmark (SELECT operations):")
+    print(f"  Overall faster: {standard_report['summary']['overall_faster']}")
+    print(f"  Average difference: {standard_report['summary']['avg_percentage_diff']:.2f}%")
+
+    print("\nMixed Benchmark (INSERT, UPDATE, DELETE, GET operations):")
+    print(f"  Overall faster: {mixed_report['summary']['overall_faster']}")
+    print(f"  Average difference: {mixed_report['summary']['avg_percentage_diff']:.2f}%")
+
+    # Print advanced benchmark summary if available
+    if "error" not in advanced_report:
+        print("\nParallel Query Benchmark:")
+        print(f"  Overall faster: {advanced_report['parallel']['summary']['overall_faster']}")
+        print(f"  Average difference: {advanced_report['parallel']['summary']['avg_percentage_diff']:.2f}%")
+
+        print("\nComplex Query Benchmark:")
+        print(f"  Overall faster: {advanced_report['complex']['summary']['overall_faster']}")
+        print(f"  Average difference: {advanced_report['complex']['summary']['avg_percentage_diff']:.2f}%")
+
+        print("\nConcurrent Client Benchmark:")
+        print(f"  Overall faster: {advanced_report['concurrent']['summary']['overall_faster']}")
+        print(f"  Average difference: {advanced_report['concurrent']['summary']['avg_percentage_diff']:.2f}%")
+
+        # Print concurrency analysis
+        print("\nPerformance by Concurrency Level:")
+        for concurrency, analysis in advanced_report["concurrent"]["summary"]["concurrency_analysis"].items():
+            print(f"  Concurrency {concurrency}:")
+            print(f"    Overall faster: {analysis['overall_faster']}")
+            print(f"    Average difference: {analysis['avg_percentage_diff']:.2f}%")
+    else:
+        print("\nAdvanced benchmarks were not completed due to errors.")
 
 
 if __name__ == "__main__":

@@ -7,47 +7,23 @@
 
 # 🏗️ Build all containers for local development
 build:
-	docker compose -f docker-compose.local.yml build
+	docker compose -f docker-compose.yml build
 
 # 🚀 Start all services in detached mode for local development
 up:
-	docker compose -f docker-compose.local.yml up -d
+	docker compose -f docker-compose.yml up -d
 
 # 🛑 Stop and remove all containers for local development
 down:
-	docker compose -f docker-compose.local.yml down
+	docker compose -f docker-compose.yml down
 
 # ⏹️ Stop all services without removing them for local development
 stop:
-	docker compose -f docker-compose.local.yml stop
+	docker compose -f docker-compose.yml stop
 
 # 🔄 Restart all services for local development
 restart:
-	docker compose -f docker-compose.local.yml restart
-
-#-----------------------------------------------
-# 🐳 Docker Commands - Production Environment
-#-----------------------------------------------
-
-# 🏗️ Build all containers for production
-build-prod:
-	docker compose -f docker-compose.production.yml build
-
-# 🚀 Start all services in detached mode for production
-up-prod:
-	docker compose -f docker-compose.production.yml up -d
-
-# 🛑 Stop and remove all containers for production
-down-prod:
-	docker compose -f docker-compose.production.yml down
-
-# ⏹️ Stop all services without removing them for production
-stop-prod:
-	docker compose -f docker-compose.production.yml stop
-
-# 🔄 Restart all services for production
-restart-prod:
-	docker compose -f docker-compose.production.yml restart
+	docker compose -f docker-compose.yml restart
 
 #-----------------------------------------------
 # 📊 Logging & Debugging
@@ -55,17 +31,17 @@ restart-prod:
 
 # 📝 View logs for a specific service
 log:
-	docker compose logs -f app-service
+	docker compose logs -f app
 
 # 🖥️ Open a bash shell in a container
 bash:
-	docker compose exec app-service bash
+	docker compose exec app bash
 
 # 🐞 Run a service in debug mode with ports exposed
 run-debug:
-	docker compose stop app-service; \
-	docker compose rm -f app-service; \
-	docker compose run --rm --service-ports app-service
+	docker compose stop app; \
+	docker compose rm -f app; \
+	docker compose run --rm --service-ports app
 
 #-----------------------------------------------
 # 🗄️ Database Migration Commands
@@ -75,37 +51,26 @@ run-debug:
 makemigrations:
 	@echo '✏️ Migration Name: '; \
 	read NAME; \
-	docker compose run --rm app-service alembic -c /app/alembic.ini revision --autogenerate -m "$$NAME"
+	docker compose run --rm app alembic -c /app/alembic.ini revision --autogenerate -m "$$NAME"
 
 # ⬆️ Apply all migrations
 migrate:
-	docker compose run --rm app-service alembic -c /app/alembic.ini upgrade heads
+	docker compose run --rm app alembic -c /app/alembic.ini upgrade head
 
 # 📋 Show migration history
 showmigrations:
-	docker compose run --rm app-service alembic -c /app/alembic.ini history
+	docker compose run --rm app alembic -c /app/alembic.ini history
 
 # 🏁 Initialize migrations
 initmigrations:
-	docker compose run --rm app-service alembic -c /app/alembic.ini init migrations
+	docker compose run --rm app alembic -c /app/alembic.ini init migrations
 
 # ⬇️ Downgrade to a previous migration
 downgrade:
 	@echo '⏮️ Enter revision (or press enter for -1): '; \
 	read REVISION; \
 	if [ -z "$$REVISION" ]; then \
-		docker compose run --rm app-service alembic -c /app/alembic.ini downgrade -1; \
+		docker compose run --rm app alembic -c /app/alembic.ini downgrade -1; \
 	else \
-		docker compose run --rm app-service alembic -c /app/alembic.ini downgrade $$REVISION; \
+		docker compose run --rm app alembic -c /app/alembic.ini downgrade $$REVISION; \
 	fi
-
-#-----------------------------------------------
-# 🛠️ Development Tools
-#-----------------------------------------------
-
-# 🔍 Set up pre-commit hooks
-pre-check:
-	pre-commit uninstall && \
-	pre-commit install && \
-	pre-commit autoupdate && \
-	pre-commit install --hook-type commit-msg -f

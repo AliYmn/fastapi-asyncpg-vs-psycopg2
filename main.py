@@ -49,6 +49,12 @@ async def root():
     }
 
 
+@app.get("/health", status_code=200)
+async def health_check():
+    """Health check endpoint for Docker healthcheck"""
+    return {"status": "healthy"}
+
+
 # Include routers
 app.include_router(async_router)
 app.include_router(sync_router)

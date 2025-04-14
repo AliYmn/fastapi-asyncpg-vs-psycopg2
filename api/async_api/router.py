@@ -1,6 +1,7 @@
 import time
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
@@ -278,4 +279,156 @@ async def benchmark_mixed(count: int = 100, db: AsyncSession = Depends(get_db)):
         "operations": operations,
         "execution_time_seconds": execution_time,
         "operations_per_second": operations_per_second,
+    }
+
+
+@router.get("/benchmark/parallel")
+async def benchmark_parallel(count: int = 100, db: AsyncSession = Depends(get_db)):
+    """Benchmark endpoint that performs multiple database operations in parallel using asyncpg."""
+    import asyncio
+
+    start_time = time.time()
+    operations = 0
+
+    # Define async query functions
+    async def query_users():
+        return await db.execute(select(User))
+
+    async def query_products():
+        return await db.execute(select(Product).where(Product.price > 10.0).order_by(Product.price.desc()))
+
+    async def query_users_with_filter():
+        return await db.execute(select(User).where(User.username.like("user%")))
+
+    async def query_products_with_join():
+        # Simulate a more complex query with a join
+        stmt = select(Product, User).join(User, Product.id == User.id, isouter=True).where(Product.price > 5.0)
+        return await db.execute(stmt)
+
+    # Run queries in parallel batches
+    for _ in range(count):
+        # Execute 4 queries in parallel
+        results = await asyncio.gather(
+            query_users(), query_products(), query_users_with_filter(), query_products_with_join()
+        )
+
+        # Process results to ensure they're fully consumed
+        for result in results:
+            result.fetchall()
+
+        operations += 4  # 4 queries per iteration
+
+    # Get execution time
+    execution_time = time.time() - start_time
+
+    # Avoid division by zero
+    operations_per_second = 0
+    if execution_time > 0:
+        operations_per_second = operations / execution_time
+
+    return {
+        "database": "asyncpg",
+        "operations": operations,
+        "execution_time_seconds": execution_time,
+        "operations_per_second": operations_per_second,
+        "parallel": True,
+    }
+
+
+@router.get("/benchmark/complex")
+async def benchmark_complex(count: int = 100, db: AsyncSession = Depends(get_db)):
+    """Benchmark endpoint that performs complex database operations using asyncpg."""
+    start_time = time.time()
+    operations = 0
+
+    for _ in range(count):
+        # Complex query 1: Aggregation with group by
+        stmt1 = (
+            select(
+                User.full_name,
+                func.count(Product.id).label("product_count"),
+                func.avg(Product.price).label("avg_price"),
+            )
+            .select_from(User)
+            .join(Product, User.id == Product.id, isouter=True)
+            .group_by(User.full_name)
+            .having(func.avg(Product.price) > 0)
+        )
+        await db.execute(stmt1)
+        operations += 1
+
+        # Complex query 2: Subquery with order by
+        subq = select(Product.id, func.rank().over(order_by=Product.price.desc()).label("price_rank")).subquery()
+
+        stmt2 = select(Product).join(subq, Product.id == subq.c.id).where(subq.c.price_rank <= 5)
+        await db.execute(stmt2)
+        operations += 1
+
+        # Complex query 3: Window functions
+        stmt3 = select(User.username, User.email, func.row_number().over(order_by=User.username).label("row_num"))
+        await db.execute(stmt3)
+        operations += 1
+
+    # Get execution time
+    execution_time = time.time() - start_time
+
+    # Avoid division by zero
+    operations_per_second = 0
+    if execution_time > 0:
+        operations_per_second = operations / execution_time
+
+    return {
+        "database": "asyncpg",
+        "operations": operations,
+        "execution_time_seconds": execution_time,
+        "operations_per_second": operations_per_second,
+        "complex": True,
+    }
+
+
+@router.get("/benchmark/concurrent")
+async def benchmark_concurrent(count: int = 100, concurrency: int = 10, db: AsyncSession = Depends(get_db)):
+    """Benchmark endpoint that simulates concurrent database operations using asyncpg."""
+    import asyncio
+
+    start_time = time.time()
+
+    # Define a single task that performs database operations
+    async def db_task(task_id: int):
+        task_operations = 0
+        # Perform a mix of operations
+        for i in range(count // concurrency):
+            # SELECT operation
+            await db.execute(select(User).where(User.id > task_id % 5))
+            await db.execute(select(Product).where(Product.price > 10 + task_id % 10))
+            task_operations += 2
+
+            # More complex SELECT
+            stmt = select(User, Product).outerjoin(Product, User.id == Product.id)
+            await db.execute(stmt)
+            task_operations += 1
+
+        return task_operations
+
+    # Create and run concurrent tasks
+    tasks = [db_task(i) for i in range(concurrency)]
+    results = await asyncio.gather(*tasks)
+
+    # Sum up all operations
+    total_operations = sum(results)
+
+    # Get execution time
+    execution_time = time.time() - start_time
+
+    # Avoid division by zero
+    operations_per_second = 0
+    if execution_time > 0:
+        operations_per_second = total_operations / execution_time
+
+    return {
+        "database": "asyncpg",
+        "operations": total_operations,
+        "execution_time_seconds": execution_time,
+        "operations_per_second": operations_per_second,
+        "concurrency": concurrency,
     }
